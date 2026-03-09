@@ -47,5 +47,5 @@ test_output*.txt
 test_cluster*.py
 extract_pdf.py
 
-# ── Dataset in project ──
-django_ml_project/dummy-data/*.csv
+# # ── Dataset in project ──
+# django_ml_project/dummy-data/*.csv
