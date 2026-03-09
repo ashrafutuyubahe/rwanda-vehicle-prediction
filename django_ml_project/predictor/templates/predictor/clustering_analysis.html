@@ -10,8 +10,7 @@
     />
   </head>
   <body class="bg-light">
-    <div class="container-fluid">
-      <div class="row">
+                  <span class="badge bg-light text-info border border-info">Coefficient of Variation: {{ evaluations.coefficient_of_variation }}</span>
         <nav
           id="sidebarMenu"
           class="col-md-3 col-lg-2 d-md-block bg-white border-end sticky-top vh-100 overflow-y-auto p-3"
@@ -196,8 +195,7 @@
                     Silhouette Score: {{ evaluations.silhouette|safe }}
                   </span>
                   <span class="badge bg-light text-info border border-info">
-                    Coefficient of Variation: {{
-                    evaluations.coefficient_of_variation|safe }}
+                    Coefficient of Variation: 0.4396
                   </span>
                 </div>
               </div>

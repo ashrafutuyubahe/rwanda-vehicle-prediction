@@ -3,24 +3,38 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score
 from sklearn.ensemble import RandomForestRegressor
 import joblib
+from sklearn.ensemble import HistGradientBoostingRegressor
 import os
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 df = pd.read_csv(os.path.join(BASE_DIR, "dummy-data", "vehicles_ml_dataset.csv"))
 
-features = ["year", "kilometers_driven", "seating_capacity", "estimated_income"]
+
+
+# i added 
+features = [
+    "year", "kilometers_driven", "seating_capacity", "estimated_income",
+    "manufacturer", "body_type", "engine_type", "transmission", "fuel_type",
+    "client_age", "province", "district", "income_level", "season"
+]
 target = "selling_price"
 
-X = df[features]
-y = df[target]
+# Encode categorical features
+cat_features = ["manufacturer", "body_type", "engine_type", "transmission", "fuel_type", "province", "district", "income_level", "season"]
+df_encoded = df.copy()
+for col in cat_features:
+    df_encoded[col] = df_encoded[col].astype("category").cat.codes
+
+X = df_encoded[features]
+y = df_encoded[target]
 
 X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42
 )
 
 # Train model
-model = RandomForestRegressor(n_estimators=100, random_state=42)
+model = RandomForestRegressor(n_estimators=200, max_depth=12, random_state=42)
 model.fit(X_train, y_train)
 
 # Save model

@@ -21,7 +21,7 @@ X_raw = df[SEGMENT_FEATURES].values
 # 3. Filter core samples (per-sample silhouette >= 0.70) to remove borderline noise
 # 4. Report refined silhouette on core samples (no re-clustering)
 
-# Step 1: Power-transform to normalise distribution
+# Step 1: Power-transformyes to normalise distribution
 scaler = PowerTransformer(method="yeo-johnson")
 X_scaled = scaler.fit_transform(X_raw)
 
