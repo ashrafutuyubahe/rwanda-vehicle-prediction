@@ -70,8 +70,8 @@ silhouette_avg = round(refined_score, 2)
 cluster_sizes = df_core["cluster_id"].value_counts().values
 cv = round(np.std(cluster_sizes) / np.mean(cluster_sizes), 4) if np.mean(cluster_sizes) != 0 else 0
 
-cluster_summary = df_core.groupby("client_class")[SEGMENT_FEATURES].mean()
-cluster_counts = df_core["client_class"].value_counts().reset_index()
+cluster_summary = df.groupby("client_class")[SEGMENT_FEATURES].mean()
+cluster_counts = df["client_class"].value_counts().reset_index()
 cluster_counts.columns = ["client_class", "count"]
 cluster_summary = cluster_summary.merge(cluster_counts, on="client_class")
 
