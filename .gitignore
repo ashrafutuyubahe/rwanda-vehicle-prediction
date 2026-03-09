@@ -1,0 +1,51 @@
+# ── Exercise files (root directory) ──
+vehicles_ml_dataset.csv
+Last exercise - django_ml_lab_manual.pdf
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+
+# ── Virtual environments ──
+.venv/
+venv/
+django_ml_project/venv/
+
+# ── Django ──
+*.log
+db.sqlite3
+db.sqlite3-journal
+*.pot
+*.mo
+media/
+staticfiles/
+
+# ── ML model artifacts ──
+*.pkl
+*.joblib
+*.h5
+
+# ── IDE / Editor ──
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Training / temp outputs ──
+train_output.txt
+test_output*.txt
+test_cluster*.py
+extract_pdf.py
+
+# ── Dataset in project ──
+django_ml_project/dummy-data/*.csv

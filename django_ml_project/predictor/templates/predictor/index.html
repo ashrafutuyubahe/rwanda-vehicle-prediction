@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vehicle ML Dashboard</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+  </head>
+  <body class="bg-light">
+    <div class="container-fluid">
+      <div class="row">
+        <nav
+          id="sidebarMenu"
+          class="col-md-3 col-lg-2 d-md-block bg-white border-end sticky-top vh-100 overflow-y-auto p-3"
+        >
+          <div class="mb-4 ps-2">
+            <h5 class="text-primary fw-bold mb-0">Vehicle ML</h5>
+            <small class="text-muted">EDA</small>
+          </div>
+          <div id="data_exploration-nav" class="nav nav-pills flex-column">
+            <a class="nav-link mb-1 active" href="#dataset_exploration"
+              >Data Exploration</a
+            >
+            <a class="nav-link mb-1" href="#data_exploration"
+              >Data Description</a
+            >
+            <a class="nav-link mb-1" href="#rwanda_map">Rwanda District Map</a>
+            <a class="nav-link mb-1" href="{% url 'regression_analysis' %}"
+              >Regression Analysis</a
+            >
+            <a class="nav-link mb-1" href="{% url 'classification_analysis' %}"
+              >Classification Analysis</a
+            >
+            <a class="nav-link mb-1" href="{% url 'clustering_analysis' %}"
+              >Clustering Analysis</a
+            >
+          </div>
+        </nav>
+
+        <main
+          class="col-md-9 ms-sm-auto col-lg-10 px-md-4 py-4"
+          data-bs-spy="scroll"
+          data-bs-target="#data_exploration-nav"
+          data-bs-smooth-scroll="true"
+          tabindex="0"
+        >
+          <header class="mb-4 border-bottom pb-3">
+            <h1 class="fw-bold text-dark">Vehicle Insights Dashboard</h1>
+            <p class="text-secondary mb-0">Exploratory Data Analysis</p>
+          </header>
+
+          <section
+            id="dataset_exploration"
+            class="mb-5"
+            style="padding-top: 20px"
+          >
+            <div class="card shadow-sm border-0">
+              <div class="card-header bg-white border-bottom py-3">
+                <span class="fw-bold">Data Exploration</span>
+              </div>
+              <div class="card-body overflow-x-auto">
+                {{ dataset_exploration|safe }}
+              </div>
+            </div>
+          </section>
+
+          <section id="data_exploration" class="mb-5" style="padding-top: 20px">
+            <div class="card shadow-sm border-0">
+              <div class="card-header bg-white border-bottom py-3">
+                <span class="fw-bold">Statistical Analysis</span>
+              </div>
+              <div class="card-body overflow-x-auto">
+                {{ data_exploration|safe }}
+              </div>
+            </div>
+          </section>
+
+          <!-- Exercise (a): Rwanda Map with District Boundaries and Vehicle Client Counts -->
+          <section id="rwanda_map" class="mb-5" style="padding-top: 20px">
+            <div class="card shadow-sm border-0">
+              <div class="card-header bg-white border-bottom py-3">
+                <span class="fw-bold"
+                  >Rwanda District Map &mdash; Vehicle Clients per
+                  District</span
+                >
+              </div>
+              <div class="card-body">
+                <div
+                  id="rwanda-choropleth"
+                  style="width: 100%; height: 700px"
+                ></div>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script id="district-data" type="application/json">
+      {{ district_map_data|safe }}
+    </script>
+    <script>
+      // ── Rwanda District GeoJSON (all 30 districts with approximate boundary polygons) ──
+      const rwandaDistricts = JSON.parse(
+        document.getElementById("district-data").textContent,
+      );
+
+      // District approximate center coordinates (lat, lon) for all 30 districts
+      const districtCoords = {
+        Nyarugenge: [-1.9536, 29.8739],
+        Gasabo: [-1.8883, 30.0911],
+        Kicukiro: [-1.9958, 30.0811],
+        Nyanza: [-2.3517, 29.7506],
+        Gisagara: [-2.5867, 29.7],
+        Nyaruguru: [-2.57, 29.5124],
+        Huye: [-2.5947, 29.7394],
+        Nyamagabe: [-2.43, 29.49],
+        Ruhango: [-2.2167, 29.7833],
+        Muhanga: [-2.0833, 29.75],
+        Kamonyi: [-2.0, 29.8333],
+        Karongi: [-2.1333, 29.3667],
+        Rutsiro: [-2.0833, 29.25],
+        Rubavu: [-1.6833, 29.3167],
+        Nyabihu: [-1.7333, 29.5],
+        Ngororero: [-1.8833, 29.5833],
+        Rusizi: [-2.4833, 29.0],
+        Nyamasheke: [-2.35, 29.1333],
+        Rulindo: [-1.7167, 29.85],
+        Gakenke: [-1.6833, 29.7833],
+        Musanze: [-1.4833, 29.6333],
+        Burera: [-1.4333, 29.85],
+        Gicumbi: [-1.5833, 30.0833],
+        Rwamagana: [-1.95, 30.4333],
+        Nyagatare: [-1.3167, 30.3167],
+        Gatsibo: [-1.5833, 30.4167],
+        Kayonza: [-1.8667, 30.65],
+        Kirehe: [-2.2667, 30.6667],
+        Ngoma: [-2.15, 30.4333],
+        Bugesera: [-2.1833, 30.25],
+      };
+
+      // Build arrays for Plotly scattermapbox
+      const lats = [];
+      const lons = [];
+      const texts = [];
+      const sizes = [];
+      const colors = [];
+
+      rwandaDistricts.districts.forEach((d, i) => {
+        const coord = districtCoords[d];
+        if (coord) {
+          lats.push(coord[0]);
+          lons.push(coord[1]);
+          texts.push(`<b>${d}</b><br>Clients: ${rwandaDistricts.counts[i]}`);
+          sizes.push(Math.max(12, rwandaDistricts.counts[i] * 0.6));
+          colors.push(rwandaDistricts.counts[i]);
+        }
+      });
+
+      // Rwanda district boundary polygons (approximate)
+      const districtBoundaries = {
+        Nyarugenge: [
+          [-1.92, 29.83],
+          [-1.92, 29.92],
+          [-1.97, 29.92],
+          [-1.97, 29.86],
+          [-1.96, 29.83],
+          [-1.92, 29.83],
+        ],
+        Gasabo: [
+          [-1.82, 30.0],
+          [-1.82, 30.15],
+          [-1.92, 30.15],
+          [-1.92, 30.05],
+          [-1.91, 30.0],
+          [-1.82, 30.0],
+        ],
+        Kicukiro: [
+          [-1.97, 30.02],
+          [-1.97, 30.14],
+          [-2.05, 30.14],
+          [-2.05, 30.05],
+          [-2.01, 30.02],
+          [-1.97, 30.02],
+        ],
+        Nyanza: [
+          [-2.28, 29.68],
+          [-2.28, 29.8],
+          [-2.42, 29.8],
+          [-2.42, 29.68],
+          [-2.28, 29.68],
+        ],
+        Gisagara: [
+          [-2.5, 29.62],
+          [-2.5, 29.78],
+          [-2.66, 29.78],
+          [-2.66, 29.62],
+          [-2.5, 29.62],
+        ],
+        Nyaruguru: [
+          [-2.48, 29.42],
+          [-2.48, 29.6],
+          [-2.66, 29.6],
+          [-2.66, 29.42],
+          [-2.48, 29.42],
+        ],
+        Huye: [
+          [-2.5, 29.65],
+          [-2.5, 29.82],
+          [-2.68, 29.82],
+          [-2.68, 29.65],
+          [-2.5, 29.65],
+        ],
+        Nyamagabe: [
+          [-2.33, 29.38],
+          [-2.33, 29.58],
+          [-2.53, 29.58],
+          [-2.53, 29.38],
+          [-2.33, 29.38],
+        ],
+        Ruhango: [
+          [-2.13, 29.7],
+          [-2.13, 29.85],
+          [-2.3, 29.85],
+          [-2.3, 29.7],
+          [-2.13, 29.7],
+        ],
+        Muhanga: [
+          [-2.0, 29.67],
+          [-2.0, 29.82],
+          [-2.17, 29.82],
+          [-2.17, 29.67],
+          [-2.0, 29.67],
+        ],
+        Kamonyi: [
+          [-1.92, 29.75],
+          [-1.92, 29.9],
+          [-2.08, 29.9],
+          [-2.08, 29.75],
+          [-1.92, 29.75],
+        ],
+        Karongi: [
+          [-2.05, 29.27],
+          [-2.05, 29.47],
+          [-2.22, 29.47],
+          [-2.22, 29.27],
+          [-2.05, 29.27],
+        ],
+        Rutsiro: [
+          [-1.98, 29.15],
+          [-1.98, 29.35],
+          [-2.18, 29.35],
+          [-2.18, 29.15],
+          [-1.98, 29.15],
+        ],
+        Rubavu: [
+          [-1.6, 29.22],
+          [-1.6, 29.4],
+          [-1.77, 29.4],
+          [-1.77, 29.22],
+          [-1.6, 29.22],
+        ],
+        Nyabihu: [
+          [-1.63, 29.4],
+          [-1.63, 29.6],
+          [-1.83, 29.6],
+          [-1.83, 29.4],
+          [-1.63, 29.4],
+        ],
+        Ngororero: [
+          [-1.8, 29.48],
+          [-1.8, 29.68],
+          [-1.97, 29.68],
+          [-1.97, 29.48],
+          [-1.8, 29.48],
+        ],
+        Rusizi: [
+          [-2.38, 28.88],
+          [-2.38, 29.1],
+          [-2.58, 29.1],
+          [-2.58, 28.88],
+          [-2.38, 28.88],
+        ],
+        Nyamasheke: [
+          [-2.25, 29.02],
+          [-2.25, 29.22],
+          [-2.45, 29.22],
+          [-2.45, 29.02],
+          [-2.25, 29.02],
+        ],
+        Rulindo: [
+          [-1.63, 29.77],
+          [-1.63, 29.93],
+          [-1.8, 29.93],
+          [-1.8, 29.77],
+          [-1.63, 29.77],
+        ],
+        Gakenke: [
+          [-1.58, 29.68],
+          [-1.58, 29.88],
+          [-1.78, 29.88],
+          [-1.78, 29.68],
+          [-1.58, 29.68],
+        ],
+        Musanze: [
+          [-1.38, 29.53],
+          [-1.38, 29.73],
+          [-1.58, 29.73],
+          [-1.58, 29.53],
+          [-1.38, 29.53],
+        ],
+        Burera: [
+          [-1.33, 29.73],
+          [-1.33, 29.95],
+          [-1.53, 29.95],
+          [-1.53, 29.73],
+          [-1.33, 29.73],
+        ],
+        Gicumbi: [
+          [-1.47, 29.97],
+          [-1.47, 30.18],
+          [-1.68, 30.18],
+          [-1.68, 29.97],
+          [-1.47, 29.97],
+        ],
+        Rwamagana: [
+          [-1.85, 30.33],
+          [-1.85, 30.55],
+          [-2.05, 30.55],
+          [-2.05, 30.33],
+          [-1.85, 30.33],
+        ],
+        Nyagatare: [
+          [-1.17, 30.17],
+          [-1.17, 30.47],
+          [-1.43, 30.47],
+          [-1.43, 30.17],
+          [-1.17, 30.17],
+        ],
+        Gatsibo: [
+          [-1.47, 30.28],
+          [-1.47, 30.55],
+          [-1.7, 30.55],
+          [-1.7, 30.28],
+          [-1.47, 30.28],
+        ],
+        Kayonza: [
+          [-1.75, 30.5],
+          [-1.75, 30.8],
+          [-2.0, 30.8],
+          [-2.0, 30.5],
+          [-1.75, 30.5],
+        ],
+        Kirehe: [
+          [-2.13, 30.5],
+          [-2.13, 30.82],
+          [-2.4, 30.82],
+          [-2.4, 30.5],
+          [-2.13, 30.5],
+        ],
+        Ngoma: [
+          [-2.03, 30.3],
+          [-2.03, 30.55],
+          [-2.27, 30.55],
+          [-2.27, 30.3],
+          [-2.03, 30.3],
+        ],
+        Bugesera: [
+          [-2.07, 30.1],
+          [-2.07, 30.38],
+          [-2.3, 30.38],
+          [-2.3, 30.1],
+          [-2.07, 30.1],
+        ],
+      };
+
+      // Build boundary traces
+      const boundaryTraces = [];
+      Object.entries(districtBoundaries).forEach(([name, coords]) => {
+        const blats = coords.map((c) => c[0]);
+        const blons = coords.map((c) => c[1]);
+        boundaryTraces.push({
+          type: "scattermapbox",
+          mode: "lines",
+          lat: blats,
+          lon: blons,
+          line: { width: 2, color: "#2c3e50" },
+          hoverinfo: "skip",
+          showlegend: false,
+        });
+      });
+
+      // Bubble trace for client counts
+      const bubbleTrace = {
+        type: "scattermapbox",
+        lat: lats,
+        lon: lons,
+        text: texts,
+        hoverinfo: "text",
+        mode: "markers+text",
+        textposition: "top center",
+        textfont: { size: 9, color: "#2c3e50", family: "Arial Black" },
+        marker: {
+          size: sizes,
+          color: colors,
+          colorscale: [
+            [0, "#2ecc71"],
+            [0.5, "#f39c12"],
+            [1, "#e74c3c"],
+          ],
+          colorbar: {
+            title: "Clients",
+            thickness: 15,
+            len: 0.5,
+          },
+          opacity: 0.85,
+          sizemode: "area",
+          sizeref: 0.08,
+        },
+      };
+
+      // Add district names as text labels
+      const labelTrace = {
+        type: "scattermapbox",
+        lat: lats,
+        lon: lons,
+        text: rwandaDistricts.districts,
+        mode: "text",
+        textposition: "bottom center",
+        textfont: { size: 10, color: "#1a1a2e", family: "Arial" },
+        hoverinfo: "skip",
+        showlegend: false,
+      };
+
+      const layout = {
+        mapbox: {
+          style: "open-street-map",
+          center: { lat: -1.9403, lon: 29.8739 },
+          zoom: 7.8,
+        },
+        margin: { t: 30, b: 10, l: 10, r: 10 },
+        title: {
+          text: "Rwanda &mdash; Vehicle Clients by District",
+          font: { size: 18, color: "#2c3e50" },
+        },
+        showlegend: false,
+      };
+
+      Plotly.newPlot(
+        "rwanda-choropleth",
+        [...boundaryTraces, bubbleTrace, labelTrace],
+        layout,
+        { responsive: true },
+      );
+    </script>
+  </body>
+</html>
