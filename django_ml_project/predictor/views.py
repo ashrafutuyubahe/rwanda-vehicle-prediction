@@ -223,28 +223,53 @@ def clustering_analysis(request):
             km = float(request.POST["km"])
             seats = int(request.POST["seats"])
             income = float(request.POST["income"])
+            manufacturer = request.POST["manufacturer"]
+            body_type = request.POST["body_type"]
+            engine_type = request.POST["engine_type"]
+            transmission = request.POST["transmission"]
+            fuel_type = request.POST["fuel_type"]
+            client_age = int(request.POST["client_age"])
+            province = request.POST["province"]
+            district = request.POST["district"]
+            income_level = request.POST["income_level"]
+            season = request.POST["season"]
+
+            # Load dataset for encoding
+            df = pd.read_csv(os.path.join(BASE_DIR, "dummy-data", "vehicles_ml_dataset.csv"))
+            cat_features = ["manufacturer", "body_type", "engine_type", "transmission", "fuel_type", "province", "district", "income_level", "season"]
+            encoded_values = []
+            for col in cat_features:
+                categories = df[col].astype("category").cat.categories
+                cat_mapping = {cat: idx for idx, cat in enumerate(categories)}
+                val = locals()[col]
+                encoded_values.append(cat_mapping.get(val, 0))
+
+            # Build feature vector in training order
+            features = [year, km, seats, income] + encoded_values[:5] + [client_age] + encoded_values[5:]
 
             # Step 1: Predict price using regression model
-            predicted_price = regression_model.predict([[year, km, seats, income]])[0]
+            predicted_price = regression_model.predict([features])[0]
 
             # Step 2: PowerTransform raw values, then predict cluster
             import numpy as np
             scaled_input = clustering_scaler.transform([[income, predicted_price]])
             cluster_id = clustering_model.predict(scaled_input)[0]
 
-            # Dynamic mapping based on cluster centers
             centers_orig = clustering_scaler.inverse_transform(clustering_model.cluster_centers_)
             sorted_clusters = centers_orig[:, 0].argsort()
-
-            mapping = {
-                sorted_clusters[0]: "Economy",
-                sorted_clusters[1]: "Standard",
-                sorted_clusters[2]: "Premium",
-            }
+            k = len(centers_orig)
+            if k == 3:
+                mapping = {
+                    sorted_clusters[0]: "Economy",
+                    sorted_clusters[1]: "Standard",
+                    sorted_clusters[2]: "Premium",
+                }
+            else:
+                mapping = {idx: f"Cluster-{i+1}" for i, idx in enumerate(sorted_clusters)}
 
             context.update(
                 {
-                    "prediction": mapping.get(cluster_id, "Unknown"),
+                    "prediction": mapping.get(cluster_id, f"Cluster-{cluster_id+1}"),
                     "price": predicted_price,
                 }
             )
