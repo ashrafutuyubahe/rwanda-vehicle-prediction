@@ -10,7 +10,13 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 
 SEGMENT_FEATURES = ["estimated_income", "selling_price"]
 
+
 df = pd.read_csv(os.path.join(BASE_DIR, "dummy-data", "vehicles_ml_dataset.csv"))
+# Remove outliers (outside 1st and 99th percentiles)
+for col in SEGMENT_FEATURES:
+    low = df[col].quantile(0.01)
+    high = df[col].quantile(0.99)
+    df = df[(df[col] >= low) & (df[col] <= high)]
 
 X_raw = df[SEGMENT_FEATURES].values
 
@@ -25,57 +31,108 @@ X_raw = df[SEGMENT_FEATURES].values
 scaler = PowerTransformer(method="yeo-johnson")
 X_scaled = scaler.fit_transform(X_raw)
 
-# Step 2: Fit KMeans with k=3
-kmeans = KMeans(n_clusters=3, random_state=42, n_init=50, max_iter=1000)
-all_labels = kmeans.fit_predict(X_scaled)
-df["cluster_id"] = all_labels
+# Try k=2-5, select lowest CV with silhouette >= 0.9
+results = []
+best_cv = None
+best_k = None
+best_model = None
+best_scaler = None
+best_labels = None
+best_core_mask = None
+best_score = None
+best_cluster_mapping = None
+best_centers_orig = None
 
-# Step 3: Compute per-sample silhouette and filter core samples
-sample_sil = silhouette_samples(X_scaled, all_labels)
+for k in range(2, 6):
+    kmeans = KMeans(n_clusters=k, random_state=42, n_init=50, max_iter=1000)
+    all_labels = kmeans.fit_predict(X_scaled)
+    sample_sil = silhouette_samples(X_scaled, all_labels)
+    THRESHOLD = 0.70
+    core_mask = sample_sil >= THRESHOLD
+    X_core = X_scaled[core_mask]
+    core_labels = all_labels[core_mask]
+    if len(set(core_labels)) < 2:
+        continue  # skip degenerate clustering
+    refined_score = silhouette_score(X_core, core_labels)
+    cluster_sizes = np.bincount(core_labels)
+    cv = round(np.std(cluster_sizes) / np.mean(cluster_sizes), 4) if np.mean(cluster_sizes) != 0 else 0
+    centers_orig = scaler.inverse_transform(kmeans.cluster_centers_)
+    sorted_clusters = centers_orig[:, 0].argsort()
+    cluster_mapping = {i: f"Cluster-{i+1}" for i in range(k)}
+    if k == 3:
+        cluster_mapping = {
+            sorted_clusters[0]: "Economy",
+            sorted_clusters[1]: "Standard",
+            sorted_clusters[2]: "Premium",
+        }
+    results.append({
+        "k": k,
+        "cv": cv,
+        "silhouette": round(refined_score, 4),
+        "model": kmeans,
+        "scaler": scaler,
+        "labels": all_labels,
+        "core_mask": core_mask,
+        "score": refined_score,
+        "cluster_mapping": cluster_mapping,
+        "centers_orig": centers_orig,
+    })
+    if refined_score >= 0.9 and (best_cv is None or cv < best_cv):
+        best_cv = cv
+        best_k = k
+        best_model = kmeans
+        best_scaler = scaler
+        best_labels = all_labels
+        best_core_mask = core_mask
+        best_score = refined_score
+        best_cluster_mapping = cluster_mapping
+        best_centers_orig = centers_orig
 
-THRESHOLD = 0.70
-core_mask = sample_sil >= THRESHOLD
-X_core = X_scaled[core_mask]
-core_labels = all_labels[core_mask]
+if best_model is None and results:
+    best_result = results[0]
+    best_model = best_result["model"]
+    best_scaler = best_result["scaler"]
+    best_labels = best_result["labels"]
+    best_core_mask = best_result["core_mask"]
+    best_score = best_result["score"]
+    best_cluster_mapping = best_result["cluster_mapping"]
+    best_centers_orig = best_result["centers_orig"]
+    best_cv = best_result["cv"]
+    best_k = best_result["k"]
 
-# Step 4: Refined silhouette on core samples (same labels, just subset)
-refined_score = silhouette_score(X_core, core_labels)
-
+df["cluster_id"] = best_labels
 df_display = df.copy()
+sample_sil = silhouette_samples(X_scaled, best_labels)
 df_display["silhouette_sample"] = sample_sil
-df_core = df_display[core_mask].copy()
-df_core["cluster_id"] = core_labels
-
-# Map cluster IDs to names based on mean estimated_income
-centers_orig = scaler.inverse_transform(kmeans.cluster_centers_)
-sorted_clusters = centers_orig[:, 0].argsort()
-
-cluster_mapping = {
-    sorted_clusters[0]: "Economy",
-    sorted_clusters[1]: "Standard",
-    sorted_clusters[2]: "Premium",
-}
-
-df_core["client_class"] = df_core["cluster_id"].map(cluster_mapping)
-df["client_class"] = df["cluster_id"].map(cluster_mapping)
+df_core = df_display[best_core_mask].copy()
+df_core["cluster_id"] = best_labels[best_core_mask]
+df_core["client_class"] = df_core["cluster_id"].map(best_cluster_mapping)
+df["client_class"] = df["cluster_id"].map(best_cluster_mapping)
 
 model_path = os.path.join(BASE_DIR, "model_generators", "clustering", "clustering_model.pkl")
 scaler_path = os.path.join(BASE_DIR, "model_generators", "clustering", "clustering_scaler.pkl")
-joblib.dump(kmeans, model_path)
-joblib.dump(scaler, scaler_path)
+joblib.dump(best_model, model_path)
+joblib.dump(best_scaler, scaler_path)
 
-silhouette_avg = round(refined_score, 2)
-
-# ── Exercise (b): Coefficient of Variation ──
+silhouette_avg = round(best_score, 2)
 cluster_sizes = df_core["cluster_id"].value_counts().values
 cv = round(np.std(cluster_sizes) / np.mean(cluster_sizes), 4) if np.mean(cluster_sizes) != 0 else 0
-
 cluster_summary = df.groupby("client_class")[SEGMENT_FEATURES].mean()
 cluster_counts = df["client_class"].value_counts().reset_index()
 cluster_counts.columns = ["client_class", "count"]
 cluster_summary = cluster_summary.merge(cluster_counts, on="client_class")
-
 comparison_df = df[["client_name", "estimated_income", "selling_price", "client_class"]]
+
+# Output results for train_output.txt
+with open(os.path.join(BASE_DIR, "train_output.txt"), "a") as f:
+    f.write("Training Clustering Model...\n")
+    f.write(f"  Best k: {best_k}\n")
+    f.write(f"  Silhouette Score: {silhouette_avg}\n")
+    f.write(f"  Coefficient of Variation: {cv}\n")
+    f.write("  CV and Silhouette for k=2-5:\n")
+    for r in results:
+        f.write(f"    k={r['k']}: CV={r['cv']}, Silhouette={r['silhouette']}\n")
+
 
 
 def evaluate_clustering_model():

@@ -12,7 +12,7 @@ df = pd.read_csv(os.path.join(BASE_DIR, "dummy-data", "vehicles_ml_dataset.csv")
 
 
 
-# i added 
+# i added more features to the model to improve its performance, and i also increased the number of estimators and max depth for better accuracy.
 features = [
     "year", "kilometers_driven", "seating_capacity", "estimated_income",
     "manufacturer", "body_type", "engine_type", "transmission", "fuel_type",
@@ -33,7 +33,7 @@ X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42
 )
 
-# Train model
+# Train model with encreased estimators and max depth for better performance kbs
 model = RandomForestRegressor(n_estimators=200, max_depth=12, random_state=42)
 model.fit(X_train, y_train)
 
