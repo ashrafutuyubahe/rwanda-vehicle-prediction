@@ -206,13 +206,18 @@
                     Silhouette Score: {{ evaluations.silhouette|safe }}
                   </span>
                   <span class="badge bg-light text-info border border-info">
-                    Coefficient of Variation: 0.3421
+                    Coefficient of Variation: {{ evaluations.coefficient_of_variation|safe }}
                   </span>
                 </div>
               </div>
               <div class="card-body">
-                <div class="table-responsive">
+                <div class="table-responsive mb-4">
                   {{ evaluations.summary|safe }}
+                </div>
+                <div class="table-responsive">
+                  <h6 class="fw-bold text-secondary mb-2">Per-Cluster & Overall CV for Key Features</h6>
+                  {{ evaluations.cv_table|safe }}
+                  <small class="text-muted">CV = std/mean for each cluster and overall, lower CV means more uniform group.</small>
                 </div>
               </div>
             </div>

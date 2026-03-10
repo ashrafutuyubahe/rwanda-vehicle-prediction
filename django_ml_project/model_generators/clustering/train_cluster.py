@@ -117,6 +117,25 @@ joblib.dump(best_scaler, scaler_path)
 silhouette_avg = round(best_score, 2)
 cluster_sizes = df_core["cluster_id"].value_counts().values
 cv = round(np.std(cluster_sizes) / np.mean(cluster_sizes), 4) if np.mean(cluster_sizes) != 0 else 0
+
+# Compute CV for each cluster for each feature
+per_cluster_cv = {}
+for feature in SEGMENT_FEATURES:
+    per_cluster_cv[feature] = {}
+    for cluster in df["client_class"].unique():
+        values = df[df["client_class"] == cluster][feature].values
+        mean = np.mean(values)
+        std = np.std(values)
+        cv_cluster = round(std / mean, 4) if mean != 0 else 0
+        per_cluster_cv[feature][cluster] = cv_cluster
+
+# Compute overall CV for each feature
+overall_cv = {}
+for feature in SEGMENT_FEATURES:
+    mean = np.mean(df[feature].values)
+    std = np.std(df[feature].values)
+    overall_cv[feature] = round(std / mean, 4) if mean != 0 else 0
+
 cluster_summary = df.groupby("client_class")[SEGMENT_FEATURES].mean()
 cluster_counts = df["client_class"].value_counts().reset_index()
 cluster_counts.columns = ["client_class", "count"]
@@ -132,10 +151,28 @@ with open(os.path.join(BASE_DIR, "train_output.txt"), "a") as f:
     f.write("  CV and Silhouette for k=2-5:\n")
     for r in results:
         f.write(f"    k={r['k']}: CV={r['cv']}, Silhouette={r['silhouette']}\n")
+    f.write("\nPer-cluster CV for each feature:\n")
+    for feature in SEGMENT_FEATURES:
+        f.write(f"  Feature: {feature}\n")
+        for cluster, cv_val in per_cluster_cv[feature].items():
+            f.write(f"    {cluster}: CV={cv_val}\n")
+        f.write(f"  Overall CV: {overall_cv[feature]}\n")
+    f.write("\n")
 
 
 
 def evaluate_clustering_model():
+    # Prepare per-cluster CV table
+    cv_table = "<table class='table table-bordered table-sm'><thead><tr><th>Feature</th>"
+    for cluster in df["client_class"].unique():
+        cv_table += f"<th>{cluster} CV</th>"
+    cv_table += "<th>Overall CV</th></tr></thead><tbody>"
+    for feature in SEGMENT_FEATURES:
+        cv_table += f"<tr><td>{feature}</td>"
+        for cluster in df["client_class"].unique():
+            cv_table += f"<td>{per_cluster_cv[feature][cluster]}</td>"
+        cv_table += f"<td>{overall_cv[feature]}</td></tr>"
+    cv_table += "</tbody></table>"
     return {
         "silhouette": silhouette_avg,
         "coefficient_of_variation": cv,
@@ -151,4 +188,5 @@ def evaluate_clustering_model():
             justify="center",
             index=False,
         ),
+        "cv_table": cv_table,
     }
