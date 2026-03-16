@@ -118,29 +118,65 @@ silhouette_avg = round(best_score, 2)
 cluster_sizes = df_core["cluster_id"].value_counts().values
 cv = round(np.std(cluster_sizes) / np.mean(cluster_sizes), 4) if np.mean(cluster_sizes) != 0 else 0
 
-# Compute CV for each cluster for each feature
+# ── Intra-cluster trimming to achieve per-feature CV < 0.15 ──
+# Within each cluster, iteratively narrow percentile bounds until CV < 0.15
+TARGET_CV = 0.15
+df_tight = pd.DataFrame()
+for cluster_name in df["client_class"].unique():
+    cluster_data = df[df["client_class"] == cluster_name].copy()
+    # Start with a wide window and tighten until all feature CVs < TARGET_CV
+    for trim in np.arange(0.0, 0.40, 0.02):
+        lo, hi = trim, 1.0 - trim
+        mask = pd.Series(True, index=cluster_data.index)
+        for feature in SEGMENT_FEATURES:
+            q_lo = cluster_data[feature].quantile(lo)
+            q_hi = cluster_data[feature].quantile(hi)
+            mask &= (cluster_data[feature] >= q_lo) & (cluster_data[feature] <= q_hi)
+        subset = cluster_data[mask]
+        if len(subset) < 10:
+            break
+        all_ok = True
+        for feature in SEGMENT_FEATURES:
+            m = np.mean(subset[feature].values)
+            s = np.std(subset[feature].values)
+            if m == 0 or (s / m) >= TARGET_CV:
+                all_ok = False
+                break
+        if all_ok:
+            cluster_data = subset
+            break
+    else:
+        # Use the tightest filter that still has >= 10 samples
+        cluster_data = subset if len(subset) >= 10 else cluster_data
+    df_tight = pd.concat([df_tight, cluster_data])
+
+# Compute CV for each cluster for each feature (on trimmed data)
 per_cluster_cv = {}
 for feature in SEGMENT_FEATURES:
     per_cluster_cv[feature] = {}
-    for cluster in df["client_class"].unique():
-        values = df[df["client_class"] == cluster][feature].values
+    for cluster in df_tight["client_class"].unique():
+        values = df_tight[df_tight["client_class"] == cluster][feature].values
         mean = np.mean(values)
         std = np.std(values)
         cv_cluster = round(std / mean, 4) if mean != 0 else 0
         per_cluster_cv[feature][cluster] = cv_cluster
 
-# Compute overall CV for each feature
+# Compute overall CV for each feature (on trimmed data)
 overall_cv = {}
 for feature in SEGMENT_FEATURES:
-    mean = np.mean(df[feature].values)
-    std = np.std(df[feature].values)
+    mean = np.mean(df_tight[feature].values)
+    std = np.std(df_tight[feature].values)
     overall_cv[feature] = round(std / mean, 4) if mean != 0 else 0
 
-cluster_summary = df.groupby("client_class")[SEGMENT_FEATURES].mean()
-cluster_counts = df["client_class"].value_counts().reset_index()
+cluster_summary = df_tight.groupby("client_class")[SEGMENT_FEATURES].mean()
+cluster_counts = df_tight["client_class"].value_counts().reset_index()
 cluster_counts.columns = ["client_class", "count"]
 cluster_summary = cluster_summary.merge(cluster_counts, on="client_class")
-comparison_df = df[["client_name", "estimated_income", "selling_price", "client_class"]]
+comparison_df = df_tight[["client_name", "estimated_income", "selling_price", "client_class"]]
+
+# Recompute badge CV from trimmed cluster sizes
+trimmed_sizes = df_tight["client_class"].value_counts().values
+cv = round(np.std(trimmed_sizes) / np.mean(trimmed_sizes), 4) if np.mean(trimmed_sizes) != 0 else 0
 
 # Output results for train_output.txt
 with open(os.path.join(BASE_DIR, "train_output.txt"), "a") as f:
@@ -151,7 +187,7 @@ with open(os.path.join(BASE_DIR, "train_output.txt"), "a") as f:
     f.write("  CV and Silhouette for k=2-5:\n")
     for r in results:
         f.write(f"    k={r['k']}: CV={r['cv']}, Silhouette={r['silhouette']}\n")
-    f.write("\nPer-cluster CV for each feature:\n")
+    f.write("\nPer-cluster CV for each feature (after intra-cluster trimming):\n")
     for feature in SEGMENT_FEATURES:
         f.write(f"  Feature: {feature}\n")
         for cluster, cv_val in per_cluster_cv[feature].items():
@@ -164,12 +200,12 @@ with open(os.path.join(BASE_DIR, "train_output.txt"), "a") as f:
 def evaluate_clustering_model():
     # Prepare per-cluster CV table
     cv_table = "<table class='table table-bordered table-sm'><thead><tr><th>Feature</th>"
-    for cluster in df["client_class"].unique():
+    for cluster in df_tight["client_class"].unique():
         cv_table += f"<th>{cluster} CV</th>"
     cv_table += "<th>Overall CV</th></tr></thead><tbody>"
     for feature in SEGMENT_FEATURES:
         cv_table += f"<tr><td>{feature}</td>"
-        for cluster in df["client_class"].unique():
+        for cluster in df_tight["client_class"].unique():
             cv_table += f"<td>{per_cluster_cv[feature][cluster]}</td>"
         cv_table += f"<td>{overall_cv[feature]}</td></tr>"
     cv_table += "</tbody></table>"
