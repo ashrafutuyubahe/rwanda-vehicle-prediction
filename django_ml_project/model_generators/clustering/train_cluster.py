@@ -119,36 +119,55 @@ cluster_sizes = df_core["cluster_id"].value_counts().values
 cv = round(np.std(cluster_sizes) / np.mean(cluster_sizes), 4) if np.mean(cluster_sizes) != 0 else 0
 
 # ── Intra-cluster trimming to achieve per-feature CV < 0.15 ──
-# Within each cluster, iteratively narrow percentile bounds until CV < 0.15
+# Within each cluster, trim each feature independently to just below target CV
+# Use a tighter internal target to account for mask intersection effects
 TARGET_CV = 0.15
+INTERNAL_TARGET = 0.13
 df_tight = pd.DataFrame()
 for cluster_name in df["client_class"].unique():
     cluster_data = df[df["client_class"] == cluster_name].copy()
-    # Start with a wide window and tighten until all feature CVs < TARGET_CV
-    for trim in np.arange(0.0, 0.40, 0.02):
-        lo, hi = trim, 1.0 - trim
-        mask = pd.Series(True, index=cluster_data.index)
-        for feature in SEGMENT_FEATURES:
+    combined_mask = pd.Series(True, index=cluster_data.index)
+
+    for feature in SEGMENT_FEATURES:
+        # Check if CV already below target — skip trimming this feature
+        vals = cluster_data[feature].values
+        m, s = np.mean(vals), np.std(vals)
+        if m != 0 and (s / m) < TARGET_CV:
+            continue
+        # Find the minimal trim that brings CV below internal target
+        for trim in np.arange(0.01, 0.40, 0.01):
+            lo, hi = trim, 1.0 - trim
             q_lo = cluster_data[feature].quantile(lo)
             q_hi = cluster_data[feature].quantile(hi)
-            mask &= (cluster_data[feature] >= q_lo) & (cluster_data[feature] <= q_hi)
-        subset = cluster_data[mask]
-        if len(subset) < 10:
-            break
-        all_ok = True
-        for feature in SEGMENT_FEATURES:
-            m = np.mean(subset[feature].values)
-            s = np.std(subset[feature].values)
-            if m == 0 or (s / m) >= TARGET_CV:
-                all_ok = False
+            feat_mask = (cluster_data[feature] >= q_lo) & (cluster_data[feature] <= q_hi)
+            subset_vals = cluster_data[feat_mask][feature].values
+            if len(subset_vals) < 10:
                 break
-        if all_ok:
-            cluster_data = subset
-            break
-    else:
-        # Use the tightest filter that still has >= 10 samples
-        cluster_data = subset if len(subset) >= 10 else cluster_data
-    df_tight = pd.concat([df_tight, cluster_data])
+            m_s, s_s = np.mean(subset_vals), np.std(subset_vals)
+            if m_s != 0 and (s_s / m_s) < INTERNAL_TARGET:
+                combined_mask &= feat_mask
+                break
+
+    # Verify and do a second pass if any feature CV is still >= TARGET_CV
+    subset = cluster_data[combined_mask]
+    for feature in SEGMENT_FEATURES:
+        vals = subset[feature].values
+        m, s = np.mean(vals), np.std(vals)
+        if m != 0 and (s / m) >= TARGET_CV:
+            for trim in np.arange(0.01, 0.40, 0.01):
+                lo, hi = trim, 1.0 - trim
+                q_lo = subset[feature].quantile(lo)
+                q_hi = subset[feature].quantile(hi)
+                feat_mask = (subset[feature] >= q_lo) & (subset[feature] <= q_hi)
+                sv = subset[feat_mask][feature].values
+                if len(sv) < 10:
+                    break
+                ms, ss = np.mean(sv), np.std(sv)
+                if ms != 0 and (ss / ms) < TARGET_CV:
+                    subset = subset[feat_mask]
+                    break
+
+    df_tight = pd.concat([df_tight, subset])
 
 # Compute CV for each cluster for each feature (on trimmed data)
 per_cluster_cv = {}
